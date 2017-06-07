@@ -10,7 +10,6 @@ LIBS += -lcrypt
 SOURCES += main.c \
     brute_force.c \
     check_pass.c \
-    client.c \
     parse.c \
     run_mode.c \
     serialize.c \
@@ -24,7 +23,6 @@ HEADERS += \
     parse.h \
     run_mode.h \
     serialize.h \
-    serizalize.h \
     state.h \
     thread_queue.h
 

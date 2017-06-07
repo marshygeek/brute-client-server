@@ -10,64 +10,74 @@
 #include <pthread.h>
 #include "declarations.h"
 #include "check_pass.h"
+#include "clientparse.h"
+#include "serialize.h"
+#include <assert.h>
 #include <string.h>
 #define _GNU_SOURCE
 #include <crypt.h>
 
 int main(int argc, char *argv[]) {
-	if(argc < 4) {
-		printf("Parameters not initialized");
-		exit(1);
-	}
-	
-	char hostname[MAX_BUF_SIZE];
-	strcpy(hostname, argv[2]);	
+    char hash[HASH_SIZE];
+    char alph[ALPH_SIZE];
+    config_t config = {
+        .brute_mode = BM_REC,
+        .hash = hash,
+        .alph = alph,
+    };
+    char hostname[MAX_BUF_SIZE];
 
-    int portno = atoi(argv[3]);
-	int id = atoi(argv[4]);
+    clientparse(argc, argv, &config, hostname);
 
     int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd < 0)
-        error("ERROR opening socket");
+    assert(sockfd >= 0);
 
     struct hostent *server;
     server = gethostbyname(hostname);
-    if (server == NULL) {
-        fprintf(stderr,"ERROR, no such host\n");
-        exit(0);
-    }
+    assert(server != NULL);
 
     struct sockaddr_in serv_addr;
     bzero((char *) &serv_addr, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
 
     serv_addr.sin_addr.s_addr = INADDR_ANY;
-    serv_addr.sin_port = htons(portno);
-    if (connect(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
-        error("ERROR connecting");
-
-	char hash[MAX_BUF_SIZE];
-	int n = read(sockfd, &hash, sizeof(hash));
-	if (n < 0)
-            error("ERROR read from socket");
+    serv_addr.sin_port = htons(config.port);
+    assert(connect(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) >= 0);
 	
 	result_t result = {
 		.found = false,
-	}
+    };
 
-	check_pass_args_t check_pass_args = {
-		.hash = hash,
-		.result = &result,
-		.data.initialized = 0,
-	}
+    task_t task;
 
+    int task_number = 0;
+    int idx = 0;
     for (;;) {
-		password_t password;		
+		int32_t msglen;
+        int n = read(sockfd, &msglen, sizeof(msglen));
+        char responce[msglen];
+        n = read(sockfd, responce, msglen);
+        assert(n >= 0);
 
-        n = read(sockfd, &password, sizeof(password));
-        if (n < 0)
-            error("ERROR read from socket");
+        deserialize_task(task.password, config.hash, config.alph, &task_number, &idx, &task.from,
+                         &task.to, &config.len, responce);
 
+        check_pass_args_t check_pass_args = {
+            .hash = config.hash,
+            .result = &result,
+            .data.initialized = 0,
+        };
+
+        int pass_found = (int)do_task(&task, &config, &check_pass_args);
+
+        char result[MAX_BUF_SIZE * 4];
+        serialize_result(task.password, task_number, idx, pass_found, result);
+
+        msglen = (int)strlen(result) + 1;
+
+        n = write(sockfd, &msglen, sizeof(msglen));
+        n = write(sockfd, &result, msglen);
+        assert(n >= 0);
     }
 
     close(sockfd);

@@ -1,6 +1,7 @@
 #ifndef DECLARATIONS_H
 #define DECLARATIONS_H
 
+#include <stdio.h>
 #include <stdbool.h>
 #include <pthread.h>
 #include <semaphore.h>
@@ -8,10 +9,12 @@
 #define _GNU_SOURCE
 #include <crypt.h>
 
+
+
 #define QUEUE_SIZE (4)
 #define MAX_PASSWORD_LENGTH (7)
 #define CLIENT_NUMBER (10)
-#define MAX_BUF_SIZE (50)
+#define MAX_BUF_SIZE (1024)
 #define HASH_SIZE 13
 #define ALPH_SIZE 255
  
@@ -39,7 +42,8 @@
   "</msg_send>\n"
  
 #define TASK_TEMPLATE_(HASH_SIZE, ALPH_SIZE) TASK_TEMPLATE__ (HASH_SIZE, ALPH_SIZE)
-#define TASK_TEMPLATE TASK_TEMPLATE_ (HASH_SIZE, ALPH_SIZE)
+#define TASK_TEMPLATE_DESERIALIZE TASK_TEMPLATE_ (HASH_SIZE, ALPH_SIZE)
+#define TASK_TEMPLATE_SERIALIZE TASK_TEMPLATE__ (,)
  
 #define RESULT_TEMPLATE "<?xml version=\"1.0\"?>\n"\
   "<msg_recv>\n"                                   \
@@ -57,12 +61,6 @@
   "    </result>\n"                                \
   "  </args>\n"                                    \
   "</msg_recv>\n"
-
-void error(const char *msg)
-{
-    perror(msg);
-    exit(0);
-}
 
 typedef enum{
     BM_REC,

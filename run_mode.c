@@ -6,6 +6,7 @@
 #include "state.h"
 #include "serialize.h"
 #include <string.h>
+#include <stdlib.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <sys/types.h>
@@ -15,6 +16,7 @@
 #include <netdb.h>
 #define _GNU_SOURCE
 #include <crypt.h>
+#include <assert.h>
 
 void * worker(void * arg){
     gen_context_t * gen_context = arg;
@@ -22,18 +24,13 @@ void * worker(void * arg){
 	int sockfd = gen_context->clientfd;
     pthread_mutex_unlock(&gen_context->wait4me);	
 
-    check_pass_args_t check_pass_args = {
-        .hash = gen_context->config->hash,
-        .result = gen_context->result,
-        .data.initialized = 0,
-    };
-	
 	task_t task = {
-        .from = 0,
-        .to = gen_context->sync_state->state.task->from,
+        .from = gen_context->sync_state->state.task->to,
+        .to = gen_context->config->len,
     };
 
 	int task_number = 0;	
+    int idx = 0;
     for(;;)
     {
 		bool got_task = true;
@@ -46,29 +43,27 @@ void * worker(void * arg){
         }
         pthread_mutex_unlock(&gen_context->sync_state->mutex);
 
-		char * result;
-		serialize_task(&task.password, gen_context->config->hash, gen_context->config->alph, 
-			task_number, 0, task.from, task.to, gen_context->config->len, result);
+        char result[MAX_BUF_SIZE];
+        serialize_task(task.password, gen_context->config->hash, gen_context->config->alph,
+            task_number, idx, task.from, task.to, gen_context->config->len, result);
 
 		int32_t msglen = (int)strlen(result) + 1;
 		int n = write(sockfd, &msglen, sizeof(msglen));
 		n = write(sockfd, &result, msglen);
-		if (n < 0)
-            error("ERROR write from server");
+        assert(n >= 0);
 
 		n = read(sockfd, &msglen, sizeof(msglen));
 		char responce[msglen];
 		n = read(sockfd, responce, msglen);
-        if (n < 0)
-            error("ERROR read from server");
+        assert(n >= 0);
 
-		int pass_found;
-		deserialize_result(&task.password, gen_context->config->hash, gen_context->config->alph, 
-			task_number, 0, task.from, task.to, gen_context->config->len, result);
+        int pass_found;
+        deserialize_result(task.password, &task_number, &idx, &pass_found, responce);
 
         if(got_task && pass_found) {
             gen_context->sync_state->stop = true;
 			printf("The password is: %s\n", task.password);
+            exit(EXIT_SUCCESS);
 		}
 
         if (gen_context->sync_state->stop)
@@ -77,14 +72,16 @@ void * worker(void * arg){
 		task_number++;
     }
 
+    printf("The password wasn't found\n");
+    close(sockfd);
     return NULL;
 }
 
 void run(config_t * config, result_t * result){
     sync_state_t sync_state;
     task_t task = {
-        .from = 2,
-        .to = config->len,
+        .from = 0,
+        .to = 2,
     };
     task.password[config->len] = 0;
 
@@ -121,8 +118,7 @@ void run(config_t * config, result_t * result){
     pthread_mutex_init(&gen_context.wait4me, NULL);
     while (cur < CLIENT_NUMBER) {
         clientsocket = accept(config->sockfd, (struct sockaddr *) &cli_addr, &clilen);
-        if (clientsocket < 0)
-             error("ERROR on accept");
+        assert(clientsocket >= 0);
 
         pthread_mutex_lock(&gen_context.wait4me);
         gen_context.clientfd = clientsocket;

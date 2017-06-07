@@ -5,6 +5,8 @@
 #include "brute_force.h"
 #include "run_mode.h"
 #include <unistd.h>
+#include <string.h>
+#include <assert.h>
 
 #include <sys/types.h>
 #include <inttypes.h>
@@ -19,7 +21,6 @@ int main(int argc, char * argv[]){
         .len = 0,
         .brute_mode = BM_REC,
         .hash = NULL,
-        .run_mode = RM_SINGLE,
     };
 
     parse(argc, argv, &config);
@@ -30,16 +31,16 @@ int main(int argc, char * argv[]){
 
 	
     config.sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (config.sockfd < 0)
-       error("ERROR opening socket");
+    assert(config.sockfd >= 0);
+
     struct sockaddr_in serv_addr;
-    bzero((char *) &serv_addr, sizeof(serv_addr));
+    memset((char *) &serv_addr, 0, sizeof(serv_addr));
 
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_addr.s_addr = INADDR_ANY;
     serv_addr.sin_port = htons(config.port);
-    if (bind(config.sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
-        error("ERROR on binding");
+
+    assert(bind(config.sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) >= 0);
 
     run(&config, &result);
 
